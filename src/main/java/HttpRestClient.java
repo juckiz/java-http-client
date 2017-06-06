@@ -24,9 +24,6 @@ public class HttpRestClient extends TimerTask {
 
     public static void main(String[] args) throws Exception {
 
-        Timer timer = new Timer();
-        timer.schedule(new SayHello(), 0, 5000);
-
         final String BASE_URL = "http://localhost:3000";
 
         HttpRestClient http = new HttpRestClient();
