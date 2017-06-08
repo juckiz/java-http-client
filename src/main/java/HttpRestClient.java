@@ -1,5 +1,4 @@
 import com.fasterxml.jackson.core.JsonGenerationException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -8,19 +7,13 @@ import java.io.InputStreamReader;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.ParseException;
-import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import org.json.JSONArray;
-import org.json.JSONObject;
 
-//import org.json.simple.parser.JSONParser;
-//import org.json.simple.parser.ParseException;
-
-public class HttpRestClient extends TimerTask {
-    public void run() {
-
-    }
+public class HttpRestClient {
 
     public static void main(String[] args) throws Exception {
 
@@ -28,27 +21,48 @@ public class HttpRestClient extends TimerTask {
 
         HttpRestClient http = new HttpRestClient();
 
+        // Scheduled retrieval of resources
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
 
-        // Get list of resources
-        System.out.println("Request all resources");
-        //String url = BASE_URL.concat("/resources");
-        String resourcesJSON = http.sendGet(BASE_URL.concat("/resources"));
+        Runnable task = () -> {
+            try {
+                System.out.println("Request all resources : " + new java.util.Date());
+                String resourcesJSON = http.sendGet(BASE_URL.concat("/resources"));
 
-        /*
-        * Parse values from JSONArray
-        */
-        //http.jsonToArray(resourcesJSON);
+                if (!resourcesJSON.isEmpty()) {
+                    // Get individual resources and generate object from them
+                    JSONArray arr = new JSONArray(resourcesJSON);
+                    for (int i = 0; i < arr.length(); i++) {
+                        System.out.println("Request single resource");
+                        String entityJSON = http.sendGet(BASE_URL.concat(arr.getJSONObject(i).getString("ref")));
+                        http.generateObject(entityJSON);
+                    }
+                } else {
+                    System.out.println("Resources list empty");
+                }
+            }
+            catch (InterruptedException e) {
+                System.err.println("Thread interrupted : " + e);
+            }
+            catch (Exception e) {
+                System.err.println("No valid response : " + e);
+            }
+        };
 
-        // Get individual resources and generate object from them
-        JSONArray arr = new JSONArray(resourcesJSON);
-        //Map<String, String> list = new HashMap<String, String>();
-        for (int i = 0; i < arr.length(); i++) {
-            //list.put(arr.getJSONObject(i).getString("type"), arr.getJSONObject(i).getString("ref"));
-            System.out.println("Request single resource");
-            String entityJSON = http.sendGet(BASE_URL.concat(arr.getJSONObject(i).getString("ref")));
-            http.generateObject(entityJSON);
+        // Schedule "Request all resources" to run every 5 seconds
+        // scheduleWithFixedDelay because we cannot predict duration of scheduled task
+        executor.scheduleWithFixedDelay(task, 0, 5, TimeUnit.SECONDS);
+
+        // Run thread for 30 seconds
+        Thread.sleep(30000);
+
+        executor.shutdown();
+
+        while (!executor.isTerminated()) {
+            //wait for all tasks to finish
+            System.out.println("terminating threads....");
         }
-
+        System.out.println("Finished all threads");
     }
 
     /**
@@ -56,23 +70,17 @@ public class HttpRestClient extends TimerTask {
      * @param entityJSON Single entity JSON object as string
      */
     public void generateObject(String entityJSON) {
-       // JSONObject jsonObject = new JSONObject(entityJSON);
-        System.out.println("GENERATE OBJECT: ");
-
         ObjectMapper mapper = new ObjectMapper();
 
         try {
             // Convert JSON string to Object
             ResourceEntity entity = mapper.readValue(entityJSON, ResourceEntity.class);
-            //System.out.println(entity);
 
-            //Pretty print
-            String prettyEntity = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(entity);
-            System.out.println(prettyEntity);
-/*
-            System.out.println(entity.getType());
-            System.out.println(entity.getName());
-            System.out.println(entity.getSound());*/
+            //Pretty print object
+            //String prettyEntity = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(entity);
+            //System.out.println(prettyEntity);
+
+            // "Play" sound from generated object
             entity.Sound();
 
         } catch (JsonGenerationException e) {
@@ -92,54 +100,42 @@ public class HttpRestClient extends TimerTask {
      */
     private String sendGet(String requestUrl) throws Exception {
         final String USER_AGENT = "Mozilla/5.0";
+        String jsonResponse = "";
 
-        String url = requestUrl;
+        try {
+            String url = requestUrl;
 
-        URL obj = new URL(url);
-        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+            URL obj = new URL(url);
+            HttpURLConnection connection = (HttpURLConnection) obj.openConnection();
 
-        con.setRequestMethod("GET");
-        con.setRequestProperty("User-Agent", USER_AGENT);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("User-Agent", USER_AGENT);
 
-        int responseCode = con.getResponseCode();
-        System.out.println("GET : " + url);
-        System.out.println("Response Code: " + responseCode);
+            int responseCode = connection.getResponseCode();
+            System.out.println("GET : " + url);
+            System.out.println("Response code: " + responseCode);
 
-        BufferedReader in = new BufferedReader(
-                                new InputStreamReader(con.getInputStream())
-                            );
-        String inputLine;
-        StringBuffer response = new StringBuffer();
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream())
+            );
 
-        while ((inputLine = in.readLine()) != null) {
-            response.append(inputLine);
+            String inputLine;
+            StringBuffer response = new StringBuffer();
+
+            while ((inputLine = in.readLine()) != null) {
+                response.append(inputLine);
+            }
+            in.close();
+
+            // Print response
+            System.out.println(response.toString());
+
+            jsonResponse = response.toString();
+        } catch (Exception e) {
+            System.out.println("URL call failed");
+            e.printStackTrace();
         }
-        in.close();
-
-        // Print response
-        System.out.println(response.toString());
-
-        return response.toString();
-    }
-
-    /**
-     * Originally to parse all resources json array to Java Map
-     * @param jsonString JSON array
-     */
-    public void jsonToArray(String jsonString) {
-        JSONArray arr = new JSONArray(jsonString);
-        /*
-        List<String> list = new ArrayList<String>();
-        for(int i = 0; i < arr.length(); i++){
-            list.add(arr.getJSONObject(i).getString("type"));
-        }
-        */
-        Map<String, String> list = new HashMap<String, String>();
-        for (int i = 0; i < arr.length(); i++) {
-            list.put(arr.getJSONObject(i).getString("type"), arr.getJSONObject(i).getString("ref"));
-        }
-
-        System.out.println(list);
+        return jsonResponse;
     }
 
 }

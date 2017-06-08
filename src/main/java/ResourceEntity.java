@@ -1,7 +1,7 @@
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * POJO class for Jackson
+ * Class for Jackson mapper
  */
 public class ResourceEntity implements EntityInterface {
     @JsonProperty("type")
